@@ -13,10 +13,12 @@ Model (persistence median + adaptive spread, no drift, no network, stdlib only):
     price-move scale over the last 120 minutes of the case:
         meanabs = mean(|diff|) * sqrt(pi/2)   (robust: a single jump counts once)
         std     = sample std of diffs          (jump-sensitive: jumps cluster)
-    sigma = clip(0.5*meanabs + 0.5*std, 0.0005, 0.005).
-    The cap matters: an uncapped std over-reacts to a single jump and makes the
-    forecast far too wide; the floor keeps never-moving markets from collapsing
-    to a degenerate (zero-width) forecast.
+    sigma = clip(0.6*meanabs + 0.4*std, 0.0005, 0.005).
+    The meanabs estimator gets the larger weight because it is the robust one:
+    a single jump moves the std a lot, and overweighting it widens the forecast
+    after one jump. The cap matters: an uncapped std over-reacts to a single
+    jump and makes the forecast far too wide; the floor keeps never-moving
+    markets from collapsing to a degenerate (zero-width) forecast.
   - Quantiles at horizon h (minutes after the checkpoint) use the normal quantiles
     z = [-1.644854, -0.67449, 0, 0.67449, 1.644854]:
         q_tau(h) = clamp(last + z_tau * sigma * sqrt(h), 0, 1), rounded to 6 decimals.
@@ -25,8 +27,8 @@ Model (persistence median + adaptive spread, no drift, no network, stdlib only):
 
 Practice results (mean pinball loss, percentage points; lower is better):
   house baseline (fixed sigma 0.0025, no drift): 0.3718
-  this program:                                  0.2812   (~24% better)
-  per case: p00 0.4573, p01 0.3119, p02 0.3314, p03 0.2523, p04 0.2002, p05 0.1343.
+  this program:                                  0.2809   (~24% better)
+  per case: p00 0.4613, p01 0.3115, p02 0.3331, p03 0.2487, p04 0.2001, p05 0.1310.
   It beat the baseline on every one of the 6 practice cases.
 
 Deterministic: no randomness, no clock, no network; the same case always gives
@@ -76,7 +78,7 @@ def sigma_of(prices):
     diffs = [prices[i + 1] - prices[i] for i in range(max(0, n - WINDOW - 1), n - 1)]
     if not diffs:
         return SIGMA_FLOOR
-    est = 0.5 * _meanabs_sigma(diffs) + 0.5 * _std(diffs)
+    est = 0.6 * _meanabs_sigma(diffs) + 0.4 * _std(diffs)
     return min(SIGMA_CAP, max(SIGMA_FLOOR, est))
 
 
